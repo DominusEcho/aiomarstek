@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import socket
+from collections.abc import AsyncIterator, Callable
 from typing import Any
+from unittest.mock import ANY
 
 import pytest
 
-from aiomarstek import MarstekDeviceInfo, MarstekDeviceStatus, MarstekUDPClient
+from aiomarstek import (
+    MarstekDeviceInfo,
+    MarstekDeviceStatus,
+    MarstekUDPClient,
+    discover,
+    get_es_status,
+)
 
 
 def _device_result(**overrides: Any) -> dict[str, Any]:
@@ -323,3 +333,79 @@ async def test_discover_devices_no_broadcast_addresses(
     monkeypatch.setattr(client, "send_broadcast_request", fake_broadcast)
 
     assert await client.discover_devices(broadcast_addresses=addresses) == []
+
+
+@pytest.fixture
+async def loopback_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[tuple[MarstekUDPClient, socket.socket, list[int]]]:
+    """Client listening on an ephemeral loopback socket with sends captured."""
+    client = MarstekUDPClient()
+    client._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    client._socket.bind(("127.0.0.1", 0))
+    client._socket.setblocking(False)
+    sent_ids: list[int] = []
+
+    async def fake_send(message: str, *args: Any) -> None:
+        sent_ids.append(json.loads(message)["id"])
+
+    monkeypatch.setattr(client, "_send_udp_message", fake_send)
+    device = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    device.connect(client._socket.getsockname())
+    yield client, device, sent_ids
+    device.close()
+    await client.async_cleanup()
+
+
+async def _wait_for(predicate: Callable[[], object]) -> None:
+    """Wait until predicate is true, failing after one second."""
+    async with asyncio.timeout(1):
+        while not predicate():
+            await asyncio.sleep(0.01)
+
+
+async def test_unicast_responses_are_not_retained(
+    loopback_client: tuple[MarstekUDPClient, socket.socket, list[int]],
+) -> None:
+    """Answered and unsolicited responses are not kept after delivery."""
+    client, device, sent_ids = loopback_client
+
+    for _ in range(3):
+        request = asyncio.create_task(
+            client.send_request(get_es_status(0), "192.168.1.10", timeout=1)
+        )
+        await _wait_for(lambda: sent_ids)
+        device.send(json.dumps({"id": sent_ids.pop(), "result": {}}).encode())
+        assert await request == {"id": ANY, "result": {}}
+
+    device.send(json.dumps({"id": 10**6, "result": {}}).encode())
+    await asyncio.sleep(0.05)
+
+    assert client._pending_requests == {}
+    assert client._broadcast_responses == {}
+    assert not hasattr(client, "_response_cache")
+
+
+async def test_broadcast_collects_simultaneous_responses(
+    loopback_client: tuple[MarstekUDPClient, socket.socket, list[int]],
+) -> None:
+    """Responses sharing a request ID are all collected, then released."""
+    client, device, sent_ids = loopback_client
+    client.set_broadcast_addresses(["192.168.1.255"])
+
+    broadcast = asyncio.create_task(
+        client.send_broadcast_request(discover(), timeout=0.2)
+    )
+    await _wait_for(lambda: sent_ids)
+    for ip in ("192.168.1.10", "192.168.1.11"):
+        device.send(json.dumps({"id": sent_ids[0], "result": {"ip": ip}}).encode())
+
+    responses = await broadcast
+    assert [response["result"]["ip"] for response in responses] == [
+        "192.168.1.10",
+        "192.168.1.11",
+    ]
+
+    device.send(json.dumps({"id": sent_ids[0], "result": {}}).encode())
+    await asyncio.sleep(0.05)
+    assert client._broadcast_responses == {}

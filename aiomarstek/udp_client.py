@@ -30,7 +30,7 @@ class MarstekUDPClient:
         self._port = port
         self._socket: socket.socket | None = None
         self._pending_requests: dict[int, asyncio.Future] = {}
-        self._response_cache: dict[int, dict[str, Any]] = {}
+        self._broadcast_responses: dict[int, list[dict[str, Any]]] = {}
         self._listen_task: asyncio.Task | None = None
         self._discovery_cache: list[MarstekDeviceInfo] | None = None
         self._cache_timestamp: float = 0
@@ -191,14 +191,11 @@ class MarstekUDPClient:
                     json.dumps(response, ensure_ascii=False),
                 )
 
-                if request_id:
-                    self._response_cache[request_id] = {
-                        "response": response,
-                        "addr": addr,
-                        "timestamp": loop.time(),
-                    }
-
-                if request_id and request_id in self._pending_requests:
+                # Only keep responses someone is waiting for; anything else is
+                # dropped so unsolicited or late packets cannot accumulate.
+                if request_id and request_id in self._broadcast_responses:
+                    self._broadcast_responses[request_id].append(response)
+                elif request_id and request_id in self._pending_requests:
                     future = self._pending_requests.pop(request_id)
                     if not future.done():
                         future.set_result(response)
@@ -226,10 +223,7 @@ class MarstekUDPClient:
             return []
 
         responses: list[dict[str, Any]] = []
-        start_time = asyncio.get_running_loop().time()
-        loop = asyncio.get_running_loop()
-        future = loop.create_future()
-        self._pending_requests[request_id] = future
+        self._broadcast_responses[request_id] = responses
 
         try:
             if not self._listen_task or self._listen_task.done():
@@ -247,27 +241,12 @@ class MarstekUDPClient:
             _LOGGER.debug("Target port: %s", self._port)
 
             _LOGGER.debug("Start waiting for responses, timeout: %d s", timeout)
-            try:
-                while (loop.time() - start_time) < timeout:
-                    if request_id in self._response_cache:
-                        cached_response = self._response_cache[request_id]
-                        responses.append(cached_response["response"])
-                        _LOGGER.debug(
-                            "Broadcast ID:%s received %d response(s)",
-                            request_id,
-                            len(responses),
-                        )
-                        del self._response_cache[request_id]
-
-                    await asyncio.sleep(0.1)
-
-                    if (loop.time() - start_time) >= timeout:
-                        _LOGGER.debug("Broadcast ID:%s wait timeout", request_id)
-                        break
-            except OSError as err:
-                _LOGGER.error("Error waiting for response: %s", err)
+            await asyncio.sleep(timeout)
+            _LOGGER.debug(
+                "Broadcast ID:%s received %d response(s)", request_id, len(responses)
+            )
         finally:
-            self._pending_requests.pop(request_id, None)
+            self._broadcast_responses.pop(request_id, None)
 
         _LOGGER.info("Broadcast discovery finished, %d responses", len(responses))
         return responses
