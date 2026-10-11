@@ -86,6 +86,8 @@ class MarstekDeviceStatus:
     pv4_current: MarstekStatusNumber | None = None
     pv4_state: str | None = None
     total_pv_energy: MarstekStatusNumber | None = None
+    total_grid_output_energy: MarstekStatusNumber | None = None
+    total_grid_input_energy: MarstekStatusNumber | None = None
 
     def with_es_mode_response(
         self, response: Mapping[str, object]
@@ -123,6 +125,12 @@ class MarstekDeviceStatus:
         total_pv_energy = _response_scaled_number(
             response, "total_pv_energy", self.total_pv_energy, 10
         )
+        total_grid_output_energy = _response_scaled_number(
+            response, "total_grid_output_energy", self.total_grid_output_energy, 10
+        )
+        total_grid_input_energy = _response_scaled_number(
+            response, "total_grid_input_energy", self.total_grid_input_energy, 10
+        )
 
         battery_status = self.battery_status
         if "ongrid_power" in response:
@@ -141,6 +149,8 @@ class MarstekDeviceStatus:
             battery_power=abs(ongrid_power) if ongrid_power is not None else None,
             battery_status=battery_status,
             total_pv_energy=total_pv_energy,
+            total_grid_output_energy=total_grid_output_energy,
+            total_grid_input_energy=total_grid_input_energy,
         )
 
     def with_pv_status_response(

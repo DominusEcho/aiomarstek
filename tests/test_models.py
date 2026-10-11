@@ -70,6 +70,17 @@ def test_device_status_parses_protocol_values() -> None:
     assert status.with_es_status_response({}).total_pv_energy == 2810
 
 
+def test_device_status_parses_grid_energy_totals() -> None:
+    """Grid energy counters are scaled like the PV energy counter."""
+    status = MarstekDeviceStatus(device_ip="192.168.1.10").with_es_status_response(
+        {"total_grid_output_energy": 123, "total_grid_input_energy": 456}
+    )
+
+    assert status.total_grid_output_energy == 1230
+    assert status.total_grid_input_energy == 4560
+    assert status.with_es_status_response({}).total_grid_input_energy == 4560
+
+
 @pytest.mark.parametrize(
     ("response", "match"),
     [
@@ -97,3 +108,4 @@ def test_device_status_rejects_invalid_protocol_values(
             status.with_es_status_response(response)
         else:
             status.with_es_mode_response(response)
+
