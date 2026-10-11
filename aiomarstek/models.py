@@ -86,6 +86,12 @@ class MarstekDeviceStatus:
     pv4_current: MarstekStatusNumber | None = None
     pv4_state: str | None = None
     total_pv_energy: MarstekStatusNumber | None = None
+    total_grid_output_energy: MarstekStatusNumber | None = None
+    total_grid_input_energy: MarstekStatusNumber | None = None
+    grid_power: MarstekStatusNumber | None = None
+    grid_phase_a_power: MarstekStatusNumber | None = None
+    grid_phase_b_power: MarstekStatusNumber | None = None
+    grid_phase_c_power: MarstekStatusNumber | None = None
 
     def with_es_mode_response(
         self, response: Mapping[str, object]
@@ -94,6 +100,21 @@ class MarstekDeviceStatus:
         battery_soc = _response_number(response, "bat_soc", self.battery_soc)
         ongrid_power = _response_number(response, "ongrid_power", self.battery_power)
         device_mode = _response_mode(response, "mode", self.device_mode)
+
+        # Grid power measured by an attached CT meter; meaningless without one.
+        ct_connected = response.get("ct_state", 1) == 1
+        grid_power = _response_ct_number(
+            response, "total_power", self.grid_power, ct_connected
+        )
+        grid_phase_a_power = _response_ct_number(
+            response, "a_power", self.grid_phase_a_power, ct_connected
+        )
+        grid_phase_b_power = _response_ct_number(
+            response, "b_power", self.grid_phase_b_power, ct_connected
+        )
+        grid_phase_c_power = _response_ct_number(
+            response, "c_power", self.grid_phase_c_power, ct_connected
+        )
 
         battery_status = self.battery_status
         if "ongrid_power" in response:
@@ -112,6 +133,10 @@ class MarstekDeviceStatus:
             battery_power=abs(ongrid_power) if ongrid_power is not None else None,
             device_mode=device_mode,
             battery_status=battery_status,
+            grid_power=grid_power,
+            grid_phase_a_power=grid_phase_a_power,
+            grid_phase_b_power=grid_phase_b_power,
+            grid_phase_c_power=grid_phase_c_power,
         )
 
     def with_es_status_response(
@@ -122,6 +147,12 @@ class MarstekDeviceStatus:
         ongrid_power = _response_number(response, "ongrid_power", self.battery_power)
         total_pv_energy = _response_scaled_number(
             response, "total_pv_energy", self.total_pv_energy, 10
+        )
+        total_grid_output_energy = _response_scaled_number(
+            response, "total_grid_output_energy", self.total_grid_output_energy, 10
+        )
+        total_grid_input_energy = _response_scaled_number(
+            response, "total_grid_input_energy", self.total_grid_input_energy, 10
         )
 
         battery_status = self.battery_status
@@ -141,6 +172,8 @@ class MarstekDeviceStatus:
             battery_power=abs(ongrid_power) if ongrid_power is not None else None,
             battery_status=battery_status,
             total_pv_energy=total_pv_energy,
+            total_grid_output_energy=total_grid_output_energy,
+            total_grid_input_energy=total_grid_input_energy,
         )
 
     def with_pv_status_response(
@@ -192,6 +225,18 @@ def _response_number(
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise TypeError(f"{key} must be a number or null")
     return value
+
+
+def _response_ct_number(
+    response: Mapping[str, object],
+    key: str,
+    previous_value: MarstekStatusNumber | None,
+    ct_connected: bool,
+) -> MarstekStatusNumber | None:
+    """Return a CT meter reading, or None when no CT meter is connected."""
+    if not ct_connected:
+        return None
+    return _response_number(response, key, previous_value)
 
 
 def _response_scaled_number(

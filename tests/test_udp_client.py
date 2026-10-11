@@ -304,6 +304,52 @@ async def test_get_device_status_skips_known_unsupported_pv_status(
     ]
 
 
+async def test_get_device_status_stops_after_repeated_pv_timeouts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A device that never answers PV.GetStatus stops being asked."""
+    client = MarstekUDPClient()
+    pv_requests = 0
+
+    async def fake_send_request(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal pv_requests
+        if json.loads(args[0])["method"] == "PV.GetStatus":
+            pv_requests += 1
+            raise TimeoutError
+        return {"result": {"bat_soc": 90, "mode": 0}}
+
+    monkeypatch.setattr(client, "send_request", fake_send_request)
+
+    for _ in range(5):
+        await client.get_device_status("192.168.1.10", delay_ms=0)
+
+    assert pv_requests == 3
+
+
+async def test_get_device_status_keeps_pv_after_timeouts_once_supported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Timeouts never disable PV polling on a device that answered before."""
+    client = MarstekUDPClient()
+    pv_requests = 0
+
+    async def fake_send_request(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal pv_requests
+        if json.loads(args[0])["method"] == "PV.GetStatus":
+            pv_requests += 1
+            if pv_requests == 1:
+                return {"result": {"pv1_power": 10}}
+            raise TimeoutError
+        return {"result": {"bat_soc": 90, "mode": 0}}
+
+    monkeypatch.setattr(client, "send_request", fake_send_request)
+
+    for _ in range(6):
+        await client.get_device_status("192.168.1.10", delay_ms=0)
+
+    assert pv_requests == 6
+
+
 async def test_send_request_rejects_invalid_json() -> None:
     """Non-JSON messages raise ValueError before any socket work."""
     client = MarstekUDPClient()

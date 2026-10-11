@@ -70,6 +70,17 @@ def test_device_status_parses_protocol_values() -> None:
     assert status.with_es_status_response({}).total_pv_energy == 2810
 
 
+def test_device_status_parses_grid_energy_totals() -> None:
+    """Grid energy counters are scaled like the PV energy counter."""
+    status = MarstekDeviceStatus(device_ip="192.168.1.10").with_es_status_response(
+        {"total_grid_output_energy": 123, "total_grid_input_energy": 456}
+    )
+
+    assert status.total_grid_output_energy == 1230
+    assert status.total_grid_input_energy == 4560
+    assert status.with_es_status_response({}).total_grid_input_energy == 4560
+
+
 @pytest.mark.parametrize(
     ("response", "match"),
     [
@@ -97,3 +108,27 @@ def test_device_status_rejects_invalid_protocol_values(
             status.with_es_status_response(response)
         else:
             status.with_es_mode_response(response)
+
+
+def test_device_status_parses_ct_grid_power() -> None:
+    """CT meter readings from ES.GetMode become grid power values."""
+    response = {
+        "mode": "Auto",
+        "ct_state": 1,
+        "a_power": 2068,
+        "b_power": 43,
+        "c_power": 41,
+        "total_power": 2152,
+    }
+    status = MarstekDeviceStatus(device_ip="192.168.1.10").with_es_mode_response(
+        response
+    )
+
+    assert status.grid_power == 2152
+    assert status.grid_phase_a_power == 2068
+    assert status.grid_phase_b_power == 43
+    assert status.grid_phase_c_power == 41
+
+    disconnected = status.with_es_mode_response({**response, "ct_state": 0})
+    assert disconnected.grid_power is None
+    assert disconnected.grid_phase_a_power is None
