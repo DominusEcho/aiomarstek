@@ -504,6 +504,10 @@ async def test_get_device_status_records_last_response_time(
     assert client.get_last_response_time("192.168.1.10") is None
     await client.get_device_status("192.168.1.10", delay_ms=0)
     first = client.get_last_response_time("192.168.1.10")
+    assert client.get_last_results("192.168.1.10") == {
+        "ES.GetStatus": {"bat_soc": 90, "mode": 0},
+        "ES.GetMode": {"bat_soc": 90, "mode": 0},
+    }
     assert first is not None
     assert first.tzinfo is not None
 
