@@ -88,6 +88,7 @@ class MarstekDeviceStatus:
     total_pv_energy: MarstekStatusNumber | None = None
     total_grid_output_energy: MarstekStatusNumber | None = None
     total_grid_input_energy: MarstekStatusNumber | None = None
+    battery_capacity: MarstekStatusNumber | None = None
     grid_power: MarstekStatusNumber | None = None
     grid_phase_a_power: MarstekStatusNumber | None = None
     grid_phase_b_power: MarstekStatusNumber | None = None
@@ -154,6 +155,9 @@ class MarstekDeviceStatus:
         total_grid_input_energy = _response_scaled_number(
             response, "total_grid_input_energy", self.total_grid_input_energy, 10
         )
+        battery_capacity = _response_scaled_number(
+            response, "bat_cap", self.battery_capacity, 10
+        )
 
         battery_status = self.battery_status
         if "ongrid_power" in response:
@@ -174,6 +178,7 @@ class MarstekDeviceStatus:
             total_pv_energy=total_pv_energy,
             total_grid_output_energy=total_grid_output_energy,
             total_grid_input_energy=total_grid_input_energy,
+            battery_capacity=battery_capacity,
         )
 
     def with_pv_status_response(
