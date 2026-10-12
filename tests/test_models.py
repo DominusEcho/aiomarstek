@@ -70,15 +70,20 @@ def test_device_status_parses_protocol_values() -> None:
     assert status.with_es_status_response({}).total_pv_energy == 2810
 
 
-def test_device_status_parses_grid_energy_totals() -> None:
-    """Grid energy counters are scaled like the PV energy counter."""
+def test_device_status_parses_energy_totals() -> None:
+    """Grid and load energy counters are reported in Wh, unlike PV energy."""
     status = MarstekDeviceStatus(device_ip="192.168.1.10").with_es_status_response(
-        {"total_grid_output_energy": 123, "total_grid_input_energy": 456}
+        {
+            "total_grid_output_energy": 2328,
+            "total_grid_input_energy": 456,
+            "total_load_energy": 46,
+        }
     )
 
-    assert status.total_grid_output_energy == 1230
-    assert status.total_grid_input_energy == 4560
-    assert status.with_es_status_response({}).total_grid_input_energy == 4560
+    assert status.total_grid_output_energy == 2328
+    assert status.total_grid_input_energy == 456
+    assert status.total_load_energy == 46
+    assert status.with_es_status_response({}).total_grid_input_energy == 456
 
 
 @pytest.mark.parametrize(
@@ -110,11 +115,11 @@ def test_device_status_rejects_invalid_protocol_values(
             status.with_es_mode_response(response)
 
 
-def test_device_status_parses_battery_capacity() -> None:
-    """bat_cap is reported in 10 Wh steps, like the energy counters."""
+def test_device_status_parses_battery_energy() -> None:
+    """bat_cap is the energy left in the battery, in Wh."""
     status = MarstekDeviceStatus(device_ip="192.168.1.10").with_es_status_response(
-        {"bat_cap": 200}
+        {"bat_cap": 218}
     )
 
-    assert status.battery_capacity == 2000
-    assert status.with_es_status_response({}).battery_capacity == 2000
+    assert status.battery_energy == 218
+    assert status.with_es_status_response({}).battery_energy == 218
