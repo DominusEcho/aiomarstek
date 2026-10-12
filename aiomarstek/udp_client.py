@@ -8,6 +8,7 @@ import logging
 import socket
 from collections.abc import Iterable
 from contextlib import suppress
+from datetime import UTC, datetime
 from typing import Any
 
 from .command_builder import discover, get_es_mode, get_es_status, get_pv_status
@@ -45,6 +46,15 @@ class MarstekUDPClient:
         self._es_mode_device_ids: dict[str, int] = {}
         self._pv_status_supported: dict[str, bool] = {}
         self._pv_status_timeouts: dict[str, int] = {}
+        self._last_response_times: dict[str, datetime] = {}
+
+    def get_last_response_time(self, device_ip: str) -> datetime | None:
+        """Return when the device last answered a status request (UTC)."""
+        return self._last_response_times.get(device_ip)
+
+    def _record_response(self, device_ip: str) -> None:
+        """Record that the device just answered a status request."""
+        self._last_response_times[device_ip] = datetime.now(UTC)
 
     def set_broadcast_addresses(self, addresses: Iterable[str]) -> None:
         """Set broadcast addresses used for discovery."""
@@ -388,12 +398,17 @@ class MarstekUDPClient:
             status_data = es_status_result.get("result")
             if not isinstance(status_data, dict):
                 return
+            self._record_response(device_ip)
             result_data = result_data.with_es_status_response(status_data)
 
         async def es_mode_request() -> None:
             nonlocal result_data
-            preferred_id = self._es_mode_device_ids.get(device_ip, 1)
-            device_ids = (preferred_id, 1 - preferred_id)
+            # Once the device has answered one ES.GetMode device ID, keep using
+            # only that one so an unresponsive device is not asked twice.
+            if (known_id := self._es_mode_device_ids.get(device_ip)) is not None:
+                device_ids: tuple[int, ...] = (known_id,)
+            else:
+                device_ids = (1, 0)
             for device_id in device_ids:
                 try:
                     mode_result = await self.send_request(
@@ -408,6 +423,7 @@ class MarstekUDPClient:
                 if not isinstance(mode_data, dict):
                     continue
                 self._es_mode_device_ids[device_ip] = device_id
+                self._record_response(device_ip)
                 result_data = result_data.with_es_mode_response(mode_data)
                 return
 
@@ -446,6 +462,7 @@ class MarstekUDPClient:
                     self._pv_status_supported[device_ip] = False
                 return
             self._pv_status_supported[device_ip] = True
+            self._record_response(device_ip)
             result_data = result_data.with_pv_status_response(pv_data)
 
         await es_status_request()
