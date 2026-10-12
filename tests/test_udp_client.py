@@ -455,3 +455,58 @@ async def test_broadcast_collects_simultaneous_responses(
     device.send(json.dumps({"id": sent_ids[0], "result": {}}).encode())
     await asyncio.sleep(0.05)
     assert client._broadcast_responses == {}
+
+
+async def test_get_device_status_keeps_known_es_mode_device_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a device answers one ES.GetMode ID, the other is never tried."""
+    client = MarstekUDPClient()
+    mode_ids: list[int] = []
+    answer = True
+
+    async def fake_send_request(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        request = json.loads(args[0])
+        if request["method"] == "ES.GetMode":
+            mode_ids.append(request["params"]["id"])
+            if not answer:
+                raise TimeoutError
+            return {"result": {"mode": 0}}
+        if request["method"] == "PV.GetStatus":
+            return {"error": {"code": -32601}}
+        return {"result": {"bat_soc": 90}}
+
+    monkeypatch.setattr(client, "send_request", fake_send_request)
+
+    await client.get_device_status("192.168.1.10", delay_ms=0)
+    answer = False
+    await client.get_device_status("192.168.1.10", delay_ms=0)
+
+    assert mode_ids == [1, 1]
+
+
+async def test_get_device_status_records_last_response_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The last response time only moves when the device answers."""
+    client = MarstekUDPClient()
+    answer = True
+
+    async def fake_send_request(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        if not answer:
+            raise TimeoutError
+        if json.loads(args[0])["method"] == "PV.GetStatus":
+            return {"error": {"code": -32601}}
+        return {"result": {"bat_soc": 90, "mode": 0}}
+
+    monkeypatch.setattr(client, "send_request", fake_send_request)
+
+    assert client.get_last_response_time("192.168.1.10") is None
+    await client.get_device_status("192.168.1.10", delay_ms=0)
+    first = client.get_last_response_time("192.168.1.10")
+    assert first is not None
+    assert first.tzinfo is not None
+
+    answer = False
+    await client.get_device_status("192.168.1.10", delay_ms=0)
+    assert client.get_last_response_time("192.168.1.10") == first
