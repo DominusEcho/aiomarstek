@@ -302,7 +302,6 @@ class MarstekUDPClient:
                     device_id = (
                         device_info.ip
                         or device_info.ble_mac
-                        or device_info.wifi_mac
                         or f"device_{int(asyncio.get_running_loop().time())}_{hash(device_info) % 10000}"
                     )
 
