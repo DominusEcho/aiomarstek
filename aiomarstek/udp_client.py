@@ -387,6 +387,7 @@ class MarstekUDPClient:
         previous_data: MarstekDeviceStatus | None = None,
         timeout: float = 2.5,
         delay_ms: int = 2000,
+        include_pv: bool = True,
     ) -> MarstekDeviceStatus:
         """Fetch device status and PV data."""
         result_data = previous_data or MarstekDeviceStatus(device_ip=device_ip)
@@ -435,7 +436,7 @@ class MarstekUDPClient:
 
         async def pv_status_request() -> None:
             nonlocal result_data
-            if self._pv_status_supported.get(device_ip) is False:
+            if not include_pv or self._pv_status_supported.get(device_ip) is False:
                 return
             try:
                 pv_status_result = await self.send_request(
@@ -457,7 +458,7 @@ class MarstekUDPClient:
 
         await es_status_request()
         await es_mode_request()
-        if self._pv_status_supported.get(device_ip) is not False:
+        if include_pv and self._pv_status_supported.get(device_ip) is not False:
             await delay(delay_ms)
             await pv_status_request()
 
