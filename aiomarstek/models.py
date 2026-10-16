@@ -51,13 +51,13 @@ class MarstekDeviceInfo:
             ip=_string_value(device_info.get("ip") or host),
             wifi_mac=wifi_mac,
             ble_mac=ble_mac,
-            mac=_string_value(device_info.get("mac")) or wifi_mac or ble_mac,
+            mac=_string_value(device_info.get("mac")) or ble_mac,
         )
 
     @property
     def stable_id(self) -> str:
         """Return the stable hardware identifier for the device."""
-        return self.mac or self.wifi_mac or self.ble_mac
+        return self.mac or self.ble_mac
 
 
 @dataclass(frozen=True, slots=True)

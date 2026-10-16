@@ -61,7 +61,7 @@ async def test_discover_devices_deduplicates(
         ip="192.168.1.10",
         wifi_mac="AA:BB:CC:DD:EE:FF",
         ble_mac="",
-        mac="AA:BB:CC:DD:EE:FF",
+        mac="",
     )
 
 

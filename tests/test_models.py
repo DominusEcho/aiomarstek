@@ -27,9 +27,9 @@ def test_device_info_parses_discovery_response() -> None:
         ip="192.168.1.10",
         wifi_mac="AA:BB:CC:DD:EE:FF",
         ble_mac="11:22:33:44:55:66",
-        mac="AA:BB:CC:DD:EE:FF",
+        mac="11:22:33:44:55:66",
     )
-    assert device.stable_id == "AA:BB:CC:DD:EE:FF"
+    assert device.stable_id == "11:22:33:44:55:66"
 
 
 def test_device_info_uses_host_when_response_has_no_ip() -> None:
