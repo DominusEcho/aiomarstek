@@ -51,13 +51,13 @@ class MarstekDeviceInfo:
             ip=_string_value(device_info.get("ip") or host),
             wifi_mac=wifi_mac,
             ble_mac=ble_mac,
-            mac=_string_value(device_info.get("mac")) or wifi_mac or ble_mac,
+            mac=_string_value(device_info.get("mac")) or ble_mac,
         )
 
     @property
     def stable_id(self) -> str:
         """Return the stable hardware identifier for the device."""
-        return self.mac or self.wifi_mac or self.ble_mac
+        return self.mac or self.ble_mac
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,9 +139,6 @@ class MarstekDeviceStatus:
         total_load_energy = _response_number(
             response, "total_load_energy", self.total_load_energy
         )
-        # The Open API calls bat_cap the total capacity, but firmware 301
-        # reports the energy left in the battery, in Wh: the same value as
-        # Bat.GetStatus bat_capacity.
         battery_energy = _response_number(response, "bat_cap", self.battery_energy)
 
         battery_status = self.battery_status

@@ -52,6 +52,7 @@ class MarstekUDPClient:
         self._es_mode_device_ids: dict[str, int] = {}
         self._pv_status_supported: dict[str, bool] = {}
         self._pv_status_timeouts: dict[str, int] = {}
+
         self._last_response_times: dict[str, datetime] = {}
         self._last_results: dict[str, dict[str, dict[str, Any]]] = {}
 
@@ -306,7 +307,6 @@ class MarstekUDPClient:
                     device_id = (
                         device_info.ip
                         or device_info.ble_mac
-                        or device_info.wifi_mac
                         or f"device_{int(asyncio.get_running_loop().time())}_{hash(device_info) % 10000}"
                     )
 
@@ -391,6 +391,7 @@ class MarstekUDPClient:
         previous_data: MarstekDeviceStatus | None = None,
         timeout: float = 2.5,
         delay_ms: int = 2000,
+        include_pv: bool = True,
     ) -> MarstekDeviceStatus:
         """Fetch device status and PV data."""
         result_data = previous_data or MarstekDeviceStatus(device_ip=device_ip)
@@ -443,7 +444,7 @@ class MarstekUDPClient:
 
         async def pv_status_request() -> None:
             nonlocal result_data
-            if self._pv_status_supported.get(device_ip) is False:
+            if not include_pv or self._pv_status_supported.get(device_ip) is False:
                 return
             try:
                 pv_status_result = await self.send_request(
@@ -481,7 +482,7 @@ class MarstekUDPClient:
 
         await es_status_request()
         await es_mode_request()
-        if self._pv_status_supported.get(device_ip) is not False:
+        if include_pv and self._pv_status_supported.get(device_ip) is not False:
             await delay(delay_ms)
             await pv_status_request()
 

@@ -61,7 +61,7 @@ async def test_discover_devices_deduplicates(
         ip="192.168.1.10",
         wifi_mac="AA:BB:CC:DD:EE:FF",
         ble_mac="",
-        mac="AA:BB:CC:DD:EE:FF",
+        mac="",
     )
 
 
@@ -484,7 +484,6 @@ async def test_get_device_status_keeps_known_es_mode_device_id(
 
     assert mode_ids == [1, 1]
 
-
 async def test_get_device_status_records_last_response_time(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -514,3 +513,22 @@ async def test_get_device_status_records_last_response_time(
     answer = False
     await client.get_device_status("192.168.1.10", delay_ms=0)
     assert client.get_last_response_time("192.168.1.10") == first
+
+async def test_get_device_status_skips_pv_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """include_pv=False never sends PV.GetStatus."""
+    client = MarstekUDPClient()
+    pv_requests = 0
+
+    async def fake_send_request(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal pv_requests
+        if json.loads(args[0])["method"] == "PV.GetStatus":
+            pv_requests += 1
+        return {"result": {"bat_soc": 90, "mode": 0}}
+
+    monkeypatch.setattr(client, "send_request", fake_send_request)
+
+    await client.get_device_status("192.168.1.10", delay_ms=0, include_pv=False)
+
+    assert pv_requests == 0

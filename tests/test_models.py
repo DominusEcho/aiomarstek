@@ -27,9 +27,9 @@ def test_device_info_parses_discovery_response() -> None:
         ip="192.168.1.10",
         wifi_mac="AA:BB:CC:DD:EE:FF",
         ble_mac="11:22:33:44:55:66",
-        mac="AA:BB:CC:DD:EE:FF",
+        mac="11:22:33:44:55:66",
     )
-    assert device.stable_id == "AA:BB:CC:DD:EE:FF"
+    assert device.stable_id == "11:22:33:44:55:66"
 
 
 def test_device_info_uses_host_when_response_has_no_ip() -> None:
@@ -37,6 +37,62 @@ def test_device_info_uses_host_when_response_has_no_ip() -> None:
     device = MarstekDeviceInfo.from_response({"device": "VenusE 3.0"}, "192.168.1.10")
 
     assert device.ip == "192.168.1.10"
+
+
+def test_device_info_uses_ble_mac_as_stable_id_without_wifi_mac() -> None:
+    """ble_mac is the stable ID even when wifi_mac is absent."""
+    device = MarstekDeviceInfo.from_response(
+        {"device": "VenusE 3.0", "ble_mac": "11:22:33:44:55:66"}
+    )
+
+    assert device.mac == "11:22:33:44:55:66"
+    assert device.stable_id == "11:22:33:44:55:66"
+
+
+def test_device_info_prefers_explicit_mac_field() -> None:
+    """An explicit mac field takes precedence over ble_mac."""
+    device = MarstekDeviceInfo.from_response(
+        {
+            "device": "VenusE 3.0",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "ble_mac": "11:22:33:44:55:66",
+        }
+    )
+
+    assert device.mac == "AA:BB:CC:DD:EE:FF"
+    assert device.stable_id == "AA:BB:CC:DD:EE:FF"
+
+
+def test_device_info_falls_back_to_ble_mac_when_mac_empty() -> None:
+    """An empty mac field falls back to ble_mac."""
+    device = MarstekDeviceInfo.from_response(
+        {"device": "VenusE 3.0", "mac": "", "ble_mac": "11:22:33:44:55:66"}
+    )
+
+    assert device.mac == "11:22:33:44:55:66"
+    assert device.stable_id == "11:22:33:44:55:66"
+
+
+def test_devices_with_shared_wifi_mac_keep_distinct_stable_ids() -> None:
+    """Two devices sharing wifi_mac stay distinct via their ble_mac."""
+    first = MarstekDeviceInfo.from_response(
+        {
+            "device": "VenusE 3.0",
+            "wifi_mac": "AA:BB:CC:DD:EE:FF",
+            "ble_mac": "11:22:33:44:55:66",
+        }
+    )
+    second = MarstekDeviceInfo.from_response(
+        {
+            "device": "VenusE 3.0",
+            "wifi_mac": "AA:BB:CC:DD:EE:FF",
+            "ble_mac": "66:55:44:33:22:11",
+        }
+    )
+
+    assert first.stable_id == "11:22:33:44:55:66"
+    assert second.stable_id == "66:55:44:33:22:11"
+    assert first.stable_id != second.stable_id
 
 
 def test_device_status_parses_protocol_values() -> None:
